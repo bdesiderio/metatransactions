@@ -44,36 +44,51 @@ const b = async () => {
 const example2 = async () => {
     // const contract = new Contract("",)
     const provider = new providers.JsonRpcProvider("HTTP://127.0.0.1:8545");
-    const wallet = new Wallet("0xc3a877c3972beeca67d1257ff0e563507affe0f1dd267804258f6a4982d95ebc",
-        provider);
+    const ownerAddress = '0x06bB4674A4b08d07186b721378C7e241eD85443b';
+    const ownerPrivateKey = '0x0936af475d2701538aad321f87e0a51f2b297634653393e8cab7290a674009a5';
+    const newOwnerAddress = '0x6d197071d41C77A2779B33304B8cC6Ea41f69918';
+    const registry = '0x120546dDE845DCAb38AfF0c3062D5F970cFC4e1B';
+    const wallet = new Wallet(ownerPrivateKey, provider);
 
     const contract: Contract = ContractFactory.fromSolidity(DidRegistryContract)
-        .attach("0xc9d8473F6E44914EA105c7d53a02ddd1EECF7Dc5")
+        .attach(registry) 
         .connect(wallet);
 
 
-    let data = utils.solidityKeccak256(
+    let data =  utils.solidityKeccak256(
         ['bytes1', 'bytes1', 'address', 'uint256', 'address', 'string', 'address'],
         [
             '0x19',
             '0x00',
-            "0xc9d8473F6E44914EA105c7d53a02ddd1EECF7Dc5",
+            registry,
             0,
-            '0xc225063366c3627B730f332c53E685b17fF7Ab9E',
+            ownerAddress,
             'changeOwner',
-            '0xA24dda953Bb3092b37f4692FB4a8c9AA8dCEf92f'
+            newOwnerAddress
         ]
     )
 
+    /*var hash = "0x" + web3.utils.soliditySha3(
+        ['bytes1', 'bytes1', 'address', 'uint256', 'address', 'string', 'address'],
+        [
+            '0x19',
+            '0x00',
+            registry,
+            0,
+            ownerAddress,
+            'changeOwner',
+            newOwnerAddress
+        ]
+      ).toString("hex");*/
 
     let signedMessage = await wallet.signMessage(utils.arrayify(data));
     let sig = utils.splitSignature(signedMessage);
 
     const overrides = { gasLimit: 600000000, gasPrice: 20000000000 };
-    const nonce = await provider.getTransactionCount('0xc225063366c3627B730f332c53E685b17fF7Ab9E');
+    const nonce = await provider.getTransactionCount(ownerAddress);
 
-    await contract.changeOwnerSigned("0xc225063366c3627B730f332c53E685b17fF7Ab9E", sig.v, sig.r, sig.s, "0xA24dda953Bb3092b37f4692FB4a8c9AA8dCEf92f",
-        { from: "0xc225063366c3627B730f332c53E685b17fF7Ab9E", gasLimit: 600000, gasPrice: 20000000000, nonce: nonce });
+    await contract.changeOwnerSigned(ownerAddress, sig.v, sig.r, sig.s, newOwnerAddress,
+        { from: ownerAddress, gasLimit: 600000, gasPrice: 20000000000, nonce: nonce });
 }
 
 example2();
