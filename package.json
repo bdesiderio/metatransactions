@@ -1,0 +1,29 @@
+{
+  "name": "m-transaction-test",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start:dev": "nodemon"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@ethersproject/abstract-provider": "^5.4.1",
+    "@ethersproject/contracts": "^5.4.1",
+    "ethers": "^5.4.4",
+    "ethers-utils": "^2.1.11",
+    "ethr-did": "^2.1.4",
+    "ethr-did-registry": "0.0.3",
+    "ethr-did-resolver": "^4.3.4",
+    "web3": "^1.5.1"
+  },
+  "devDependencies": {
+    "@types/node": "^16.4.13",
+    "nodemon": "^2.0.12",
+    "ts-node": "^10.1.0",
+    "typescript": "^4.3.5"
+  }
+}
