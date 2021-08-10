@@ -5,7 +5,7 @@ import { EthrDidController } from "ethr-did-resolver";
 import { CallOverrides, Contract, ContractFactory } from '@ethersproject/contracts';
 import { TransactionRequest } from "@ethersproject/abstract-provider";
 
-import { keccak256, defaultAbiCoder, toUtf8Bytes, solidityPack } from 'ethers/lib/utils'
+import { keccak256, defaultAbiCoder, toUtf8Bytes, solidityPack, arrayify } from 'ethers/lib/utils'
 import { BigNumberish } from 'ethers'
 //import { ecsign } from 'ethereumjs-util'
 import { attributeToHex, signData, stringToBytes, stripHexPrefix, createKeyPair } from "./utils.js";
@@ -89,10 +89,12 @@ const example2 = async () => {
 
 const example3 = async () => {
     const provider = new providers.JsonRpcProvider("HTTP://127.0.0.1:7545");
-    const identity = '0x06bB4674A4b08d07186b721378C7e241eD85443b';
-    const ownerPrivateKey = '0936af475d2701538aad321f87e0a51f2b297634653393e8cab7290a674009a5';
+    const identity = '0x4cf7169d86216E46308b0CEA79eb3Bc16e869bCD';
+    const ownerAddress = '0x4cf7169d86216E46308b0CEA79eb3Bc16e869bCD';
+    // const ownerPrivateKey = 'b7ecb1603741d86609d5075b7acae84ff94422e18c17f64e5a9a508ebe841aad'; //x3C58
+    const ownerPrivateKey = 'f768e73830e4f8c8f121ec39316fc170dfe9b189ae0bf6ac0dba4acc97d97ade'; //0x06bB
     // const ownerPrivateKey = '5e697f9196588307b9e818fafca38c33f6592c005bfd190820b1d2cc2d608882';
-    const newOwnerAddress = '0x06bB4674A4b08d07186b721378C7e241eD85443b';
+    const newOwnerAddress = '0x4cf7169d86216E46308b0CEA79eb3Bc16e869bCD';
     const registry = '0x7EEb5772eF87C40255a74C7cC05317C08eA64214';
     const wallet = new Wallet(ownerPrivateKey, provider);
 
@@ -100,33 +102,65 @@ const example3 = async () => {
         .attach(registry)
         .connect(wallet);
 
-    const nonce = await provider.getTransactionCount(identity);
+    const nonce = await provider.getTransactionCount(ownerAddress);
+    const registryNonce = await contract.nonce(identity);
 
-    let dataToSign = "19007EEb5772eF87C40255a74C7cC05317C08eA64214000000000000000000000000000000000000000000000000000000000000000106bB4674A4b08d07186b721378C7e241eD85443b6368616e67654f776e657206bB4674A4b08d07186b721378C7e241eD85443b";
-    let paylaodHash = Buffer.from(ethutils.sha3(Buffer.from(dataToSign, "hex")));
-    // utils.keccak256(dataToSign);
+    let payloadHash = utils.solidityKeccak256(['bytes1', 'bytes1', 'address', 'uint256', 'address', 'string', 'address'],
+        [
+            "0x19",
+            "0x00",
+            registry,
+            registryNonce.toNumber(),
+            identity,
+            'changeOwner',
+            newOwnerAddress
+        ]);
 
-    const messageBytes = utils.arrayify(paylaodHash);
+    const messageBytes = utils.arrayify(payloadHash);
 
-    let signature = await wallet.signMessage(messageBytes);
+    // let signature = await wallet.signMessage(messageBytes);
     const sig2 = ethutils.ecsign(messageBytes, Buffer.from(ownerPrivateKey, 'hex'));
     const signRSV = {
-		r: `0x${sig2.r.toString( "hex" )}`,
-		s: `0x${sig2.s.toString( "hex" )}`,
-		v: sig2.v
+        r: `0x${sig2.r.toString("hex")}`,
+        s: `0x${sig2.s.toString("hex")}`,
+        v: sig2.v
     };
 
-    let sig = utils.splitSignature(signature);
+    //se hashea primero la función con los parámetros de entrada
+    const buffer = Buffer.from("changeOwnerSigned(address,uint8,bytes32,bytes32,address)");
+    
+    //Se toman los primeros 4 bytes
+    const fun = utils.keccak256(buffer).substr(0, 10).replace("0x", "");
 
-    console.log("Public Key", wallet.publicKey);
-    console.log("Address", wallet.address);
+    //Los numeros hay que pasarlos a Hexadecimal
+    const hexaV = signRSV.v.toString(16);
 
-    // console.log("Recovered:", utils.verifyMessage(utils.arrayify(payloadHash), sig));
-    // console.log("recoverAddress:", utils.recoverAddress(payloadHash, sig));
-    // console.log("recoverPublicKey:", utils.recoverAddress(payloadHash, sig));
+    //A cada parámetro hay que hacerle un Padding de 32 bytes hacia la izquierda. Los parámetros deben ir en el orden en que los espera el SC
+    const dataIdentity = pad32Bytes(identity.replace("0x", ""));
+    const dataSigV = pad32Bytes(hexaV).replace("0x", "");
+    const dataSigR = pad32Bytes(signRSV.r).replace("0x", "");
+    const dataSigS = pad32Bytes(signRSV.s).replace("0x", "");
+    const dataNewOwner = pad32Bytes(newOwnerAddress.replace("0x", ""));
 
-    // await contract.changeOwnerSigned(ownerAddress, sig.v, sig.r, sig.s, newOwnerAddress,
-    //     { from: ownerAddress, gasLimit: 600000, gasPrice: 20000000000, nonce: nonce });
+    //Finalmente se concatenan todos los datos en un sólo string (no olvidar el "0x" +)
+    const finalData = "0x" + fun + dataIdentity + dataSigV + dataSigR + dataSigS + dataNewOwner;
+
+    var transaction: TransactionRequest = {
+        from: ownerAddress,
+        gasLimit: 600000,
+        gasPrice: 20000000000,
+        nonce: nonce,
+        data: finalData,
+        to: "0x7EEb5772eF87C40255a74C7cC05317C08eA64214",
+    };
+
+    await wallet.sendTransaction(transaction);
+}
+
+const pad32Bytes = (data: string) => {
+    var s = String(data);
+    while (s.length < (64 || 2)) { s = "0" + s; }
+    return s;
 }
 
 
