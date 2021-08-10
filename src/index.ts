@@ -5,6 +5,12 @@ import { EthrDidController } from "ethr-did-resolver";
 import { CallOverrides, Contract, ContractFactory } from '@ethersproject/contracts';
 import { TransactionRequest } from "@ethersproject/abstract-provider";
 
+import { keccak256, defaultAbiCoder, toUtf8Bytes, solidityPack } from 'ethers/lib/utils'
+import { BigNumberish } from 'ethers'
+//import { ecsign } from 'ethereumjs-util'
+import { attributeToHex, signData, stringToBytes, stripHexPrefix, createKeyPair } from "./utils.js";
+
+
 const b = async () => {
     const web3 = new Web3();
     // const signer = new Signer
@@ -45,50 +51,44 @@ const example2 = async () => {
     // const contract = new Contract("",)
     const provider = new providers.JsonRpcProvider("HTTP://127.0.0.1:8545");
     const ownerAddress = '0x06bB4674A4b08d07186b721378C7e241eD85443b';
-    const ownerPrivateKey = '0x0936af475d2701538aad321f87e0a51f2b297634653393e8cab7290a674009a5';
+    //const ownerPrivateKey = '0x0936af475d2701538aad321f87e0a51f2b297634653393e8cab7290a674009a5';
+    const ownerPrivateKey = '0936af475d2701538aad321f87e0a51f2b297634653393e8cab7290a674009a5';
     const newOwnerAddress = '0x6d197071d41C77A2779B33304B8cC6Ea41f69918';
-    const registry = '0x120546dDE845DCAb38AfF0c3062D5F970cFC4e1B';
+    const newOwnerPrivateKey = '5e697f9196588307b9e818fafca38c33f6592c005bfd190820b1d2cc2d608882';
+    const registry = '0x4EA2D8B4c8B54989fa826bb401f2f01424ee6eA0';
     const wallet = new Wallet(ownerPrivateKey, provider);
+    const uint8ArrayOwnerPrivateKey = Buffer.from('0936af475d2701538aad321f87e0a51f2b297634653393e8cab7290a674009a5', 'hex')
 
+    
     const contract: Contract = ContractFactory.fromSolidity(DidRegistryContract)
         .attach(registry) 
         .connect(wallet);
 
 
-    let data =  utils.solidityKeccak256(
-        ['bytes1', 'bytes1', 'address', 'uint256', 'address', 'string', 'address'],
-        [
-            '0x19',
-            '0x00',
-            registry,
-            0,
-            ownerAddress,
-            'changeOwner',
-            newOwnerAddress
-        ]
-    )
+   
+        const nonce2 = await contract.nonce( ownerAddress );
+		
+        const sig2 = await signData(
+			ownerAddress,
+			ownerPrivateKey,
+            Buffer.from( "changeOwner" ).toString( "hex" ) +
+			stripHexPrefix( newOwnerAddress ),
+			nonce2.toNumber(),
+			registry
+		);
+		await contract.changeOwnerSigned(
+			ownerAddress,
+			sig2.v,
+			sig2.r,
+			sig2.s,
+			newOwnerAddress,
+			{
+				gasLimit: 600000, gasPrice: 20000000000,
+			}
+		);
 
-    /*var hash = "0x" + web3.utils.soliditySha3(
-        ['bytes1', 'bytes1', 'address', 'uint256', 'address', 'string', 'address'],
-        [
-            '0x19',
-            '0x00',
-            registry,
-            0,
-            ownerAddress,
-            'changeOwner',
-            newOwnerAddress
-        ]
-      ).toString("hex");*/
-
-    let signedMessage = await wallet.signMessage(utils.arrayify(data));
-    let sig = utils.splitSignature(signedMessage);
-
-    const overrides = { gasLimit: 600000000, gasPrice: 20000000000 };
-    const nonce = await provider.getTransactionCount(ownerAddress);
-
-    await contract.changeOwnerSigned(ownerAddress, sig.v, sig.r, sig.s, newOwnerAddress,
-        { from: ownerAddress, gasLimit: 600000, gasPrice: 20000000000, nonce: nonce });
 }
+
+
 
 example2();
