@@ -5,7 +5,7 @@ import { EthrDidController } from "ethr-did-resolver";
 import { CallOverrides, Contract, ContractFactory } from '@ethersproject/contracts';
 import { TransactionRequest } from "@ethersproject/abstract-provider";
 
-import { keccak256, defaultAbiCoder, toUtf8Bytes, solidityPack, arrayify } from 'ethers/lib/utils'
+import { keccak256, defaultAbiCoder, toUtf8Bytes, solidityPack, arrayify, splitSignature, joinSignature } from 'ethers/lib/utils'
 import { BigNumberish } from 'ethers'
 //import { ecsign } from 'ethereumjs-util'
 import { attributeToHex, signData, stringToBytes, stripHexPrefix, createKeyPair } from "./utils.js";
@@ -63,28 +63,45 @@ const example2 = async () => {
         .attach(registry)
         .connect(wallet);
 
-    const nonce2 = await contract.nonce(identity);
+    const nonce = await provider.getTransactionCount(identity);
+    const registryNonce = await contract.nonce(identity);
 
-    const sig2 = await signData(
-        identity,
-        ownerPrivateKey,
-        Buffer.from("changeOwner").toString("hex") +
-        stripHexPrefix(newOwnerAddress),
-        nonce2.toNumber(),
-        registry
-    );
-
-    console.log(sig2);
-    // await contract.changeOwnerSigned(
-    // 	identity,
-    // 	sig2.v,
-    // 	sig2.r,
-    // 	sig2.s,
-    // 	newOwnerAddress,
-    // 	{
-    // 		gasLimit: 600000, gasPrice: 20000000000,
-    // 	}
+    // const sig2 = await signData(
+    //     identity,
+    //     ownerPrivateKey,
+    //     Buffer.from("changeOwner").toString("hex") +
+    //     stripHexPrefix(newOwnerAddress),
+    //     nonce2.toNumber(),
+    //     registry
     // );
+
+    // console.log(sig2);
+
+    const dataToSign = "19007EEb5772eF87C40255a74C7cC05317C08eA64214000000000000000000000000000000000000000000000000000000000000000e06bB4674A4b08d07186b721378C7e241eD85443b6368616e67654f776e657206bB4674A4b08d07186b721378C7e241eD85443b";
+    const hash = Buffer.from(ethutils.sha3(Buffer.from(dataToSign, "hex")));
+
+    var transaction: TransactionRequest = {
+        from: identity,
+        gasLimit: 600000,
+        gasPrice: 20000000000,
+        nonce: nonce,
+        data: hash,
+        to: "0x7EEb5772eF87C40255a74C7cC05317C08eA64214",
+    };
+
+    const signature = await wallet.signTransaction(transaction);
+    const sig2 = splitSignature(signature)
+
+    await contract.changeOwnerSigned(
+        identity,
+        sig2.v,
+        sig2.r,
+        sig2.s,
+        newOwnerAddress,
+        {
+            gasLimit: 600000, gasPrice: 20000000000,
+        }
+    );
 }
 
 const example3 = async () => {
@@ -126,9 +143,11 @@ const example3 = async () => {
         v: sig2.v
     };
 
+
+
     //se hashea primero la función con los parámetros de entrada
     const buffer = Buffer.from("changeOwnerSigned(address,uint8,bytes32,bytes32,address)");
-    
+
     //Se toman los primeros 4 bytes
     const fun = utils.keccak256(buffer).substr(0, 10).replace("0x", "");
 
@@ -164,6 +183,78 @@ const pad32Bytes = (data: string) => {
 }
 
 
+const example4 = () => {
+    //if (!this.wallet) throw new Error("Cannot sign content because wallet was not initialized with secrets.")
+    const content = {
+        data: {
+            header1: {
+                type: 'bytes1',
+                value: "0x19"
+            },
+            header2: {
+                type: 'bytes1',
+                value: "0x00"
+            },
+            registry: {
+                type: 'address',
+                value: "0x7EEb5772eF87C40255a74C7cC05317C08eA64214"
+            },
+            registryNonce: {
+                type: "uint256",
+                value: "0x18",
+            },
+            identity: {
+                type: "address",
+                value: "0x4cf7169d86216E46308b0CEA79eb3Bc16e869bCD",
+            },
+            operation: {
+                type: "string",
+                value: "changeOwner",
+            },
+            newOwner: {
+                type: "address",
+                value: "0x4cf7169d86216E46308b0CEA79eb3Bc16e869bCD",
+            }
+        }
+    };
 
-example3();
-// example3();
+    const firstArray = new Array<string>();
+    const secondArray = new Array<string>();
+
+
+    for (let i in content.data) {
+        firstArray.push((<any>content).data[i].type);
+        secondArray.push((<any>content).data[i].value);
+    }
+
+    let payloadHash = utils.solidityKeccak256(firstArray, secondArray);
+
+    const messageBytes = utils.arrayify(payloadHash);
+
+    const signature = (<any>ethutils).ecsign(messageBytes, Buffer.from(
+        "f768e73830e4f8c8f121ec39316fc170dfe9b189ae0bf6ac0dba4acc97d97ade", 'hex'));
+
+    const s = {
+        r: `0x${signature.r.toString("hex")}`,
+        s: `0x${signature.s.toString("hex")}`,
+        v: signature.v,
+        //signature: "s" //TODO Devolver la signature compuesta
+    };
+
+    const joinedSignature = joinSignature({
+        r: s.r,
+        s: s.s,
+        v: s.v,
+    });
+
+    return {
+        r: s.r,
+        s: s.s,
+        v: s.v,
+        signature: joinedSignature
+    };
+}
+
+
+// example2();
+example4();
